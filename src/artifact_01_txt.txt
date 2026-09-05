@@ -1,0 +1,7 @@
+┌───────────────────────────────────────────────────────────────────────┐
+   │                         SWAP.IO VALUE PILLARS                         │
+   ├───────────────────────────┬───────────────────────────┬───────────────┤
+   │ Sub-35k CU Swap Pipeline  │ Native Token-2022 Support │ Deterministic │
+   │ Direct PDA-vault mutation │ Dynamic Transfer Fees &   │ Strict Slippage│
+   │ & optimized bitwise math  │ Extension-aware accounting│ & Invariants  │
+   └───────────────────────────┴───────────────────────────┴───────────────┘

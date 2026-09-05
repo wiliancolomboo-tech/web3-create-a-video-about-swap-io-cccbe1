@@ -1,0 +1,51 @@
+flowchart TD
+    subgraph ClientLayer["Client & Keeper Layer"]
+        User["User / Trader (Signer)"]
+        UI["Swap.io Interface / Aggregator SDK"]
+        User -->|"Signs Transaction"| UI
+    end
+
+    subgraph InstructionBoundary["Solana Runtime Boundary"]
+        CU_Limit["Compute Budget Program: SetComputeUnitLimit(45_000)"]
+        CU_Price["Compute Budget Program: SetComputeUnitPrice(Priority Fee)"]
+        SwapIx["Swap.io Instruction: swap(amount_in, min_amount_out)"]
+        UI --> CU_Limit
+        UI --> CU_Price
+        UI --> SwapIx
+    end
+
+    subgraph SecurityGuards["Security Checks & Validation"]
+        SG1{"Signer Check: user.is_signer"}
+        SG2{"PDA Seeds Verification: pool_state & vaults"}
+        SG3{"Reentrancy / Invariant: x * y >= k"}
+        SG4{"Slippage Check: amount_out >= min_amount_out"}
+    end
+
+    SwapIx --> SG1
+    SG1 -->|Valid| SG2
+    SG2 -->|Valid| SG3
+
+    subgraph StateAccounts["On-Chain State Accounts (PDAs)"]
+        PoolPDA["PoolState PDA<br/>seeds=[b'pool', mint_a, mint_b]"]
+        VaultA["Vault A PDA Token Account<br/>seeds=[b'vault', pool, mint_a]"]
+        VaultB["Vault B PDA Token Account<br/>seeds=[b'vault', pool, mint_b]"]
+        ProtocolFeeVault["Protocol Fee Vault PDA<br/>seeds=[b'fee', pool]"]
+    end
+
+    subgraph ExecutionEngine["Atomic Execution Core"]
+        CalcMath["Math Engine: Constant Product Invariant (x * y = k)<br/>Includes Token-2022 Fee Deduction"]
+        CPI_In["Token Program / Token-2022 CPI<br/>Transfer amount_in from User to Vault A"]
+        CPI_Out["Token Program / Token-2022 CPI<br/>Transfer amount_out from Vault B to User<br/>(Signer: Pool PDA)"]
+        CPI_Fee["Token Program CPI<br/>Transfer protocol_fee to ProtocolFeeVault"]
+    end
+
+    SG3 --> CalcMath
+    CalcMath --> SG4
+    SG4 -->|Invariant Holds| CPI_In
+    CPI_In --> CPI_Out
+    CPI_Out --> CPI_Fee
+
+    CPI_In -.->|Mutates State| VaultA
+    CPI_Out -.->|Mutates State| VaultB
+    CPI_Fee -.->|Mutates State| ProtocolFeeVault
+    CPI_Out -.->|Emits Event| SwapEvent["SwapEvent: { user, in, out, fee }"]
