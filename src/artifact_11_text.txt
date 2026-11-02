@@ -1,0 +1,7 @@
+Swap.io Production Test Suite
+    ✔ Initializes Pool Successfully (412ms)
+    ✔ Deposits Initial Liquidity (388ms)
+    ✔ Executes Exact-Input Swap with Accurate Slippage Bounds (295ms)
+    ✔ Enforces Invariant Rejection on Slippage Breach (180ms)
+
+  4 passing (1.3s)

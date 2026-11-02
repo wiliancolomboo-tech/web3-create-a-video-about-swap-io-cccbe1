@@ -1,0 +1,7 @@
+Swap.io Protocol Suite: Deterministic Invariant QA
+    ✔ Initializes liquidity pool with 0.30% fee (30 bps) (285ms)
+    ✔ Deposits initial bootstrap liquidity (10,000 A : 20,000 B) (310ms)
+    ✔ Executes exact atomic swap (Token A -> Token B) with slippage validation (214ms)
+    ✔ Reverts deterministically when slippage tolerance is breached (168ms)
+
+  4 passing (1.2s)

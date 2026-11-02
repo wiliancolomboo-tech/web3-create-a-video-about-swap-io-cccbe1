@@ -1,8 +1,7 @@
-Swap.io Protocol QA Test Suite
-    ✔ Initializes the Swap.io Liquidity Pool successfully (421ms)
-[PASS] Swap succeeded. Transferred: 9871580 units. Tx: 4XvH8...
-    ✔ Executes a valid swap within expected slippage bounds (388ms)
-    ✔ Reverts deterministically when slippage exceeds minimum allowed (192ms)
-    ✔ Prevents unauthorized vault tampering (205ms)
+Swap.io Protocol Suite
+    ✔ T01: Initializes liquidity pool successfully (432ms)
+    ✔ T02: Deposits balanced liquidity into vault reserves (389ms)
+    ✔ T03: Executes atomic swap A -> B with slippage verification (412ms)
+    ✔ T04: Fails transaction when slippage tolerance is violated (188ms)
 
-  4 passing (1.2s)
+  4 passing (2s)

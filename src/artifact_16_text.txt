@@ -1,0 +1,8 @@
+Swap.io Protocol Suite
+    ✔ Initializes AMM Liquidity Pool with 30 bps fee (412ms)
+    ✔ Deposits Liquidity into the Pool (528ms)
+    ✔ Executes Exact Token Swap (Token A -> Token B) with Slippage Protection (614ms)
+    ✔ Fails when Slippage Limit is Exceeded (318ms)
+    ✔ Creates and Settles a Zero-Slippage Bilateral OTC Escrow (845ms)
+
+  5 passing (3.82s)

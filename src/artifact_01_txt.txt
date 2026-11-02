@@ -1,7 +1,9 @@
-┌───────────────────────────────────────────────────────────────────────┐
-   │                         SWAP.IO VALUE PILLARS                         │
-   ├───────────────────────────┬───────────────────────────┬───────────────┤
-   │ Sub-35k CU Swap Pipeline  │ Native Token-2022 Support │ Deterministic │
-   │ Direct PDA-vault mutation │ Dynamic Transfer Fees &   │ Strict Slippage│
-   │ & optimized bitwise math  │ Extension-aware accounting│ & Invariants  │
-   └───────────────────────────┴───────────────────────────┴───────────────┘
+┌─────────────────────────────────────────────────────────────┐
+       │                 SWAP.IO PROTOCOL ADVANTAGES                 │
+       ├─────────────────────────────────────────────────────────────┤
+       │  • Atomic Settlement via Single-Slot PDA Token Vaults       │
+       │  • Sub-40,000 Compute Unit (CU) Execution Footprint         │
+       │  • Native SPL-Token & SPL Token-2022 Transfer-Hook Support  │
+       │  • Zero Reentrancy Surface via Strict Solana Account Model  │
+       │  • Precise Slippage Checks & Mathematical Invariant Guards  │
+       └─────────────────────────────────────────────────────────────┘

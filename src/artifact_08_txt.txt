@@ -1,0 +1,7 @@
+swap-io core validation test suite
+    ✔ 1. Initializes canonical pool state and deterministic vault PDAs (412ms)
+    ✔ 2. Funds pool reserves via add_liquidity (388ms)
+    ✔ 3. Executes constant-product swap (Token A -> Token B) with slippage boundary check (405ms)
+    ✔ 4. Rejects swap transaction when user slippage tolerance is breached (295ms)
+
+  4 passing (2s)

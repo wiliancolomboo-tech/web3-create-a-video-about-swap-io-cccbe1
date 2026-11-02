@@ -1,18 +1,18 @@
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Attack Vector          | Vulnerability Surface                 | Swap.io Engineered Mitigation                 |
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Reentrancy             | Nested CPI invoking callback hooks    | `is_locked` bool mutex asserted before CPI;   |
-|                        | during Token-2022 transfer hooks      | runtime disallows re-entry into `swap`        |
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Sandwich Attack / MEV  | Price deviation across mempool        | Strict `min_amount_out` enforced inside pool   |
-|                        | slot boundaries                       | invariant checks; user rejects high slippage  |
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Vault Substitution     | Attacker replaces vault PDA with an   | Anchor constraint: `vault.key() == pool.vault`|
-|                        | account under their control           | checked against pool state data fields        |
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Integer Invariant Drain| Rounding down to 0 on small trades     | `u128` checked math with explicit revert on   |
-|                        | to drain reserves bit-by-bit          | `amount_out == 0` or `ZeroAmount` input       |
-+------------------------+---------------------------------------+-----------------------------------------------+
-| Fake Token Spoofing    | Attacker passes arbitrary mints       | Pool PDA seeds bound explicitly to Token A    |
-|                        |                                       | and Token B pubkeys: [b"pool", mint_a, mint_b]|
-+------------------------+---------------------------------------+-----------------------------------------------+
+┌───────────────────────────┬──────────────────────────────────────────────────────────────────┐
+│ ATTACK VECTOR             │ PROTOCOL DEFENSE MECHANISM                                       │
+├───────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ Fake Token / Mint Spoof   │ Strict validation: mint_a and mint_b checks enforce correct mint  │
+│                           │ addresses on TokenAccounts before CPI transfer triggers.         │
+├───────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ Reentrancy Exploits       │ Solana's single-program invocation model prevents reentrant      │
+│                           │ cross-calls. State closure occurs atomically in execute_swap.     │
+├───────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ Stolen PDA Authority      │ Vault seed derives from [b"vault", swap_state.key()]. Only the   │
+│                           │ corresponding SwapState can sign for transfers out of Vault A.   │
+├───────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ Front-running / MEV       │ Direct maker_amount / taker_expected_amount verification.        │
+│ Sandwiching               │ Slippage tolerance is pinned to zero in atomic P2P matching.     │
+├───────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│ Lamport Drain On Cancel   │ `close = maker` returns lamports exclusively to verified maker.  │
+│                           │ Takers/attackers cannot initiate cancel instructions.            │
+└───────────────────────────┴──────────────────────────────────────────────────────────────────┘

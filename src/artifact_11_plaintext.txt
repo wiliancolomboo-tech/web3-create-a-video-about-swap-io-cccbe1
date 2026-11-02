@@ -1,0 +1,7 @@
+swap-io protocol test harness
+    ✔ Initializes Pool Successfully (421ms)
+    ✔ Deposits Liquidity into the Pool (389ms)
+    ✔ Executes Atomic AMM Swap with Slippage Check (350ms)
+    ✔ Creates and Fills an Atomic OTC Order (Escrow Settlement) (498ms)
+
+  4 passing (2s)

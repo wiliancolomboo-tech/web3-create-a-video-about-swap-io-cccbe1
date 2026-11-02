@@ -1,0 +1,173 @@
+import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+import { assert } from "chai";
+import {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  mintTo,
+  getAccount,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
+import { SwapioDemo } from "../target/types/swapio_demo";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+describe("swapio-demo", () => {
+  const provider = anchor.AnchorProvider.local();
+  anchor.setProvider(provider);
+  const program = anchor.workspace.SwapioDemo as Program<SwapioDemo>;
+  const payer = (provider.wallet as anchor.Wallet).payer;
+
+  const admin = payer.publicKey;
+  const trader = Keypair.generate();
+
+  let mintA: PublicKey;
+  let mintB: PublicKey;
+  let pool: PublicKey;
+  let poolAuthority: PublicKey;
+  let vaultA: PublicKey;
+  let vaultB: PublicKey;
+  let adminA: PublicKey, adminB: PublicKey;
+  let traderA: PublicKey, traderB: PublicKey;
+
+  before(async () => {
+    const conn = provider.connection;
+    await conn.requestAirdrop(trader.publicKey, 2 * LAMPORTS_PER_SOL);
+
+    mintA = await createMint(conn, payer, admin, null, 6);
+    mintB = await createMint(conn, payer, admin, null, 6);
+
+    [pool] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
+      program.programId
+    );
+    [poolAuthority] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pool-authority"), pool.toBuffer()],
+      program.programId
+    );
+
+    vaultA = getAssociatedTokenAddressSync(mintA, poolAuthority, true);
+    vaultB = getAssociatedTokenAddressSync(mintB, poolAuthority, true);
+
+    // Create and fund vault ATAs owned by PDA
+    const ixA = await provider.connection.getMinimumBalanceForRentExemption(165);
+    await program.provider.sendAndConfirm(new anchor.web3.Transaction(), [], { skipPreflight: true });
+
+    adminA = (await getOrCreateAssociatedTokenAccount(
+      conn, payer, mintA, admin
+    )).address;
+    adminB = (await getOrCreateAssociatedTokenAccount(
+      conn, payer, mintB, admin
+    )).address;
+    traderA = (await getOrCreateAssociatedTokenAccount(
+      conn, payer, mintA, trader.publicKey
+    )).address;
+    traderB = (await getOrCreateAssociatedTokenAccount(
+      conn, payer, mintB, trader.publicKey
+    )).address;
+
+    await mintTo(conn, payer, mintA, adminA, admin, 10_000_000_000);
+    await mintTo(conn, payer, mintB, adminB, admin, 10_000_000_000);
+    await mintTo(conn, payer, mintA, traderA, admin, 1_000_000_000);
+    await mintTo(conn, payer, mintB, traderB, admin, 1_000_000_000);
+
+    await program.methods
+      .initializePool(30) // 0.3% fee
+      .accounts({
+        admin,
+        pool,
+        mintA,
+        mintB,
+        vaultA,
+        vaultB,
+        poolAuthority,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+
+    await program.methods
+      .addLiquidity(new anchor.BN(5_000_000), new anchor.BN(5_000_000))
+      .accounts({
+        provider: admin,
+        pool,
+        providerTokenA: adminA,
+        providerTokenB: adminB,
+        vaultA,
+        vaultB,
+        mintA,
+        mintB,
+        poolAuthority,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+      .rpc();
+  });
+
+  it("performs a successful A->B swap with slippage check", async () => {
+    const beforePool = await program.account.pool.fetch(pool);
+    const beforeTraderB = await getAccount(provider.connection, traderB);
+
+    const amountIn = new anchor.BN(100_000); // 0.1 token if decimals=6
+    const minOut = new anchor.BN(1);
+
+    await program.methods
+      .swap(amountIn, minOut, true)
+      .accounts({
+        trader: trader.publicKey,
+        pool,
+        userSource: traderA,
+        userDest: traderB,
+        vaultA,
+        vaultB,
+        mintA,
+        mintB,
+        poolAuthority,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      })
+      .signers([trader])
+      .rpc();
+
+    const afterPool = await program.account.pool.fetch(pool);
+    const afterTraderB = await getAccount(provider.connection, traderB);
+
+    assert.isAtLeast(
+      Number(afterPool.reserveA),
+      Number(beforePool.reserveA) + Number(amountIn),
+      "reserveA increased"
+    );
+    assert.isBelow(
+      Number(afterPool.reserveB),
+      Number(beforePool.reserveB),
+      "reserveB decreased"
+    );
+    assert.isAbove(
+      Number(afterTraderB.amount),
+      Number(beforeTraderB.amount),
+      "trader received tokenB"
+    );
+  });
+
+  it("rejects swap when min_out is too high", async () => {
+    const hugeMinOut = new anchor.BN(10_000_000_000);
+
+    try {
+      await program.methods.swap(new anchor.BN(10_000), hugeMinOut, true).accounts({
+        trader: trader.publicKey,
+        pool,
+        userSource: traderA,
+        userDest: traderB,
+        vaultA,
+        vaultB,
+        mintA,
+        mintB,
+        poolAuthority,
+        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
+      }).signers([trader]).rpc();
+      assert.fail("expected swap to fail");
+    } catch (e: any) {
+      assert.include(
+        e.toString(),
+        "Slippage",
+        "swap should fail due to insufficient output"
+      );
+    }
+  });
+});

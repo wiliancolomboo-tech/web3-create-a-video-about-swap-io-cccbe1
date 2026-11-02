@@ -1,0 +1,7 @@
+swap_io integration test matrix
+    ✔ 1. Successfully initializes the Swap.io Liquidity Pool (452ms)
+    ✔ 2. Deposits Initial Liquidity and verifies LP token minting (318ms)
+    ✔ 3. Executes Exact-Input Swap with Slippage Enforcement (289ms)
+    ✔ 4. Traps Frontrunning / Slippage Exceeded Failures (185ms)
+
+  4 passing (1.3s)

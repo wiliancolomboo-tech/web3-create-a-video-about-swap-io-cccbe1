@@ -1,0 +1,9 @@
+Swap.io Protocol Suite
+    ✔ 1. Initializes canonical pool with 30 bps (0.3%) swap fee (412ms)
+    ✔ 2. Rejects non-canonical reversed mint orders (88ms)
+    ✔ 3. Deposits initial liquidity and seeds invariant pool (398ms)
+    ✔ 4. Executes atomic swap with valid slippage bounds (A -> B) (314ms)
+    ✔ 5. Reverts when slippage limit is violated (72ms)
+    ✔ 6. Reverts when swap transaction deadline has expired (65ms)
+
+  6 passing (1.35s)

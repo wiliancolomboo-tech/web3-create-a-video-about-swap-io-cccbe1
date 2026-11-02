@@ -1,0 +1,37 @@
+================================================================================
+TIME     | VISUAL CUE                            | SPOKEN AUDIO NARRATIVE
+================================================================================
+00:00-   | Title graphic: Swap.io Solana Core.   | "Decentralized trading on Solana demands
+00:15    | Terminal spinning up Localnet cluster | maximum throughput and zero slippage leakage.
+         | and showing 400ms slot finality.      | Meet Swap.io: an automated market maker
+         |                                       | engineered from bare metal to exploit 
+         |                                       | Solana’s parallel Sealevel runtime."
+--------------------------------------------------------------------------------
+00:15-   | Architecture Mermaid Diagram on       | "Traditional EVM AMMs lock down global 
+00:40    | screen. Highlights the isolated PDAs, | state. Swap.io isolates state completely:
+         | Pool PDA, and Authority PDA.          | each pair operates in an isolated PDA sandbox.
+         | Zoom into parallel execution threads. | Pool A/B swaps execute simultaneously with 
+         |                                       | C/D without account lock contention, 
+         |                                       | slashing swap compute footprint to under 
+         |                                       | 35,000 Compute Units."
+--------------------------------------------------------------------------------
+00:40-   | IDE Split View: Rust `lib.rs` and     | "Under the hood, our Anchor engine employs
+01:10    | math verification. Highlight constant | constant product invariant mechanics with
+         | product `k = x * y` and fee pipeline. | dynamic base-fee tiers and atomic protocol
+         | Show test execution in terminal:      | routing. Slippage tolerances are strictly
+         | `anchor test` running clean.          | verified on-chain, rejecting toxic MEV
+         |                                       | sandwiches before state writes occur."
+--------------------------------------------------------------------------------
+01:10-   | Screen recording of live swap         | "Watch the live execution: 1,000 USDC into
+01:40    | on Solana Explorer / Solana CLI.      | SOL. Output calculated, protocol fee 
+         | Transaction signature expands into    | collected, and tokens transferred via PDA 
+         | inner CPI balance changes.            | CPIs in a single atomic transaction. 
+         | Green checkmarks on tests.            | Notice the CU usage: 34,210 CU! No reentrancy
+         |                                       | risk, no authority leak."
+--------------------------------------------------------------------------------
+01:40-   | Final Summary Slide: Performance stats| "With deterministic PDAs, fail-fast account
+02:00    | (35k CU, 100% test pass, MIT license).| guards, and mathematical precision, Swap.io 
+         | QR Code to GitHub Repository.         | sets the benchmark for high-velocity AMMs 
+         | Call-to-action banner.                | on Solana. Built for traders, powered by
+         |                                       | Solana. This is Swap.io."
+================================================================================

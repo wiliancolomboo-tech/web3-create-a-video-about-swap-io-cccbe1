@@ -1,0 +1,6 @@
+swap_io integration & edge-case test suite
+    ✔ Happy Path: Creates an order, locks tokens into Escrow PDA (482ms)
+    ✔ Happy Path: Fulfills order atomically and closes PDAs (612ms)
+    ✔ Security Boundary: Rejects order fulfillment when expired (3780ms)
+
+  3 passing (5s)

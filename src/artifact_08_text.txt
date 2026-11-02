@@ -1,0 +1,7 @@
+Swap.io Protocol Comprehensive QA Suite
+    ✔ Test 01: Successfully Initializes Pool with Canonical Order & Valid Seed Constraints (412ms)
+    ✔ Test 02: Prevents Non-Canonical Mint Ordering (Exploit Mitigation) (189ms)
+    ✔ Test 03: Seed Liquidity and Execute Swap with Explicit Slippage Guard (230ms)
+    ✔ Test 04: Reentrancy & Slippage Rejection Edge Cases (115ms)
+
+  4 passing (946ms)

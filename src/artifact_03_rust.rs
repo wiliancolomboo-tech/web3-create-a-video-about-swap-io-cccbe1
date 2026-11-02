@@ -1,306 +1,383 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
-declare_id!("Swp1o11111111111111111111111111111111111111");
+declare_id!("Swap1o1111111111111111111111111111111111111");
+
+pub const SWAP_SEED: &[u8] = b"swap_state";
+pub const VAULT_SEED: &[u8] = b"vault";
 
 #[program]
 pub mod swap_io {
     use super::*;
 
-    /// Initializes a new liquidity pool for a token pair.
-    pub fn initialize_pool(
-        ctx: Context<InitializePool>,
-        pool_bump: u8,
-        vault_a_bump: u8,
-        vault_b_bump: u8,
-        fee_basis_points: u16,
+    /// Initializes a peer-to-peer or routed atomic swap order.
+    /// Locks Maker's Asset A into a deterministic PDA-controlled Vault.
+    pub fn initialize_swap(
+        ctx: Context<InitializeSwap>,
+        swap_id: u64,
+        maker_amount: u64,
+        taker_expected_amount: u64,
+        expiry_timestamp: i64,
     ) -> Result<()> {
-        require!(fee_basis_points <= 1000, SwapError::FeeTooHigh); // Max fee: 10%
+        require!(maker_amount > 0, SwapError::InvalidAmount);
+        require!(taker_expected_amount > 0, SwapError::InvalidAmount);
+        
+        let current_time = Clock::get()?.unix_timestamp;
+        require!(
+            expiry_timestamp > current_time,
+            SwapError::InvalidExpiration
+        );
 
-        let pool = &mut ctx.accounts.pool_state;
-        pool.initializer = ctx.accounts.initializer.key();
-        pool.mint_a = ctx.accounts.mint_a.key();
-        pool.mint_b = ctx.accounts.mint_b.key();
-        pool.vault_a = ctx.accounts.vault_a.key();
-        pool.vault_b = ctx.accounts.vault_b.key();
-        pool.fee_basis_points = fee_basis_points;
-        pool.pool_bump = pool_bump;
-        pool.vault_a_bump = vault_a_bump;
-        pool.vault_b_bump = vault_b_bump;
-        pool.is_locked = false;
+        let swap_state = &mut ctx.accounts.swap_state;
+        swap_state.maker = ctx.accounts.maker.key();
+        swap_state.swap_id = swap_id;
+        swap_state.mint_a = ctx.accounts.mint_a.key();
+        swap_state.mint_b = ctx.accounts.mint_b.key();
+        swap_state.maker_amount = maker_amount;
+        swap_state.taker_expected_amount = taker_expected_amount;
+        swap_state.expiry_timestamp = expiry_timestamp;
+        swap_state.bump = ctx.bumps.swap_state;
+        swap_state.vault_bump = ctx.bumps.vault_a;
 
-        emit!(PoolInitializedEvent {
-            pool: pool.key(),
-            mint_a: pool.mint_a,
-            mint_b: pool.mint_b,
-            fee_basis_points,
+        // Perform TransferChecked from Maker ATA to PDA Vault A
+        let cpi_accounts = TransferChecked {
+            from: ctx.accounts.maker_token_a.to_account_info(),
+            mint: ctx.accounts.mint_a.to_account_info(),
+            to: ctx.accounts.vault_a.to_account_info(),
+            authority: ctx.accounts.maker.to_account_info(),
+        };
+
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            cpi_accounts,
+        );
+
+        token_interface::transfer_checked(
+            cpi_ctx,
+            maker_amount,
+            ctx.accounts.mint_a.decimals,
+        )?;
+
+        emit!(SwapCreatedEvent {
+            swap_id,
+            maker: swap_state.maker,
+            mint_a: swap_state.mint_a,
+            mint_b: swap_state.mint_b,
+            maker_amount,
+            taker_expected_amount,
+            expiry_timestamp,
         });
 
         Ok(())
     }
 
-    /// Executes an atomic constant-product token swap with Token-2022 extension awareness.
-    pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<()> {
-        require!(amount_in > 0, SwapError::ZeroAmount);
-        
-        let pool = &mut ctx.accounts.pool_state;
-        require!(!pool.is_locked, SwapError::ReentrancyDetected);
-        pool.is_locked = true; // Mutex pattern for strict reentrancy prevention
-
-        let reserve_in = ctx.accounts.vault_in.amount;
-        let reserve_out = ctx.accounts.vault_out.amount;
-
-        require!(reserve_in > 0 && reserve_out > 0, SwapError::InsufficientLiquidity);
-
-        // Constant-product invariant calculation:
-        // dy = (y * dx * (10000 - fee)) / (x * 10000 + dx * (10000 - fee))
-        let fee_factor = 10000u128
-            .checked_sub(pool.fee_basis_points as u128)
-            .ok_or(SwapError::MathOverflow)?;
-
-        let amount_in_u128 = amount_in as u128;
-        let reserve_in_u128 = reserve_in as u128;
-        let reserve_out_u128 = reserve_out as u128;
-
-        let amount_in_with_fee = amount_in_u128
-            .checked_mul(fee_factor)
-            .ok_or(SwapError::MathOverflow)?;
-
-        let numerator = amount_in_with_fee
-            .checked_mul(reserve_out_u128)
-            .ok_or(SwapError::MathOverflow)?;
-
-        let denominator = reserve_in_u128
-            .checked_mul(10000u128)
-            .ok_or(SwapError::MathOverflow)?
-            .checked_add(amount_in_with_fee)
-            .ok_or(SwapError::MathOverflow)?;
-
-        let amount_out_u128 = numerator
-            .checked_div(denominator)
-            .ok_or(SwapError::MathOverflow)?;
-
-        let amount_out = u64::try_from(amount_out_u128).map_err(|_| SwapError::MathOverflow)?;
-
-        // Slippage assertion
-        require!(amount_out >= min_amount_out, SwapError::SlippageExceeded);
-
-        // Calculate protocol fee (10% of total fee)
-        let total_fee = amount_in_u128
-            .checked_mul(pool.fee_basis_points as u128)
-            .ok_or(SwapError::MathOverflow)?
-            .checked_div(10000u128)
-            .ok_or(SwapError::MathOverflow)?;
-        let protocol_fee = u64::try_from(total_fee / 10).unwrap_or(0);
-
-        // 1. CPI: Transfer tokens from user to vault_in using TransferChecked (Token-2022 compatible)
-        let transfer_in_accounts = TransferChecked {
-            from: ctx.accounts.user_token_in.to_account_info(),
-            mint: ctx.accounts.mint_in.to_account_info(),
-            to: ctx.accounts.vault_in.to_account_info(),
-            authority: ctx.accounts.user.to_account_info(),
-        };
-        let cpi_in_ctx = CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            transfer_in_accounts,
+    /// Executes the atomic swap. The Taker sends Token B directly to Maker,
+    /// and the SwapState PDA releases Token A to the Taker.
+    pub fn execute_swap(ctx: Context<ExecuteSwap>) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp;
+        require!(
+            current_time <= ctx.accounts.swap_state.expiry_timestamp,
+            SwapError::SwapExpired
         );
+
+        let expected_taker_amount = ctx.accounts.swap_state.taker_expected_amount;
+        let maker_amount = ctx.accounts.swap_state.maker_amount;
+
+        // Verify Vault Token Balance matches expected deposit
+        require!(
+            ctx.accounts.vault_a.amount >= maker_amount,
+            SwapError::InsufficientVaultBalance
+        );
+
+        // 1. Transfer Token B from Taker to Maker
+        let taker_to_maker_accounts = TransferChecked {
+            from: ctx.accounts.taker_token_b.to_account_info(),
+            mint: ctx.accounts.mint_b.to_account_info(),
+            to: ctx.accounts.maker_token_b.to_account_info(),
+            authority: ctx.accounts.taker.to_account_info(),
+        };
+
+        let taker_cpi_ctx = CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            taker_to_maker_accounts,
+        );
+
         token_interface::transfer_checked(
-            cpi_in_ctx,
-            amount_in,
-            ctx.accounts.mint_in.decimals,
+            taker_cpi_ctx,
+            expected_taker_amount,
+            ctx.accounts.mint_b.decimals,
         )?;
 
-        // 2. CPI: Transfer tokens from vault_out to user with PDA signing
-        let mint_a_key = pool.mint_a;
-        let mint_b_key = pool.mint_b;
-        let pool_bump = pool.pool_bump;
-        let pool_seeds: &[&[&[u8]]] = &[&[
-            b"pool",
-            mint_a_key.as_ref(),
-            mint_b_key.as_ref(),
-            &[pool_bump],
+        // 2. Transfer Token A from Vault to Taker using PDA signing seeds
+        let maker_key = ctx.accounts.swap_state.maker;
+        let swap_id_bytes = ctx.accounts.swap_state.swap_id.to_le_bytes();
+        let bump = ctx.accounts.swap_state.bump;
+
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            SWAP_SEED,
+            maker_key.as_ref(),
+            swap_id_bytes.as_ref(),
+            &[bump],
         ]];
 
-        let transfer_out_accounts = TransferChecked {
-            from: ctx.accounts.vault_out.to_account_info(),
-            mint: ctx.accounts.mint_out.to_account_info(),
-            to: ctx.accounts.user_token_out.to_account_info(),
-            authority: pool.to_account_info(),
+        let vault_to_taker_accounts = TransferChecked {
+            from: ctx.accounts.vault_a.to_account_info(),
+            mint: ctx.accounts.mint_a.to_account_info(),
+            to: ctx.accounts.taker_token_a.to_account_info(),
+            authority: ctx.accounts.swap_state.to_account_info(),
         };
-        let cpi_out_ctx = CpiContext::new_with_signer(
+
+        let pda_cpi_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
-            transfer_out_accounts,
-            pool_seeds,
+            vault_to_taker_accounts,
+            signer_seeds,
         );
+
         token_interface::transfer_checked(
-            cpi_out_ctx,
-            amount_out,
-            ctx.accounts.mint_out.decimals,
+            pda_cpi_ctx,
+            maker_amount,
+            ctx.accounts.mint_a.decimals,
         )?;
 
-        // Release mutex lock
-        pool.is_locked = false;
-
         emit!(SwapExecutedEvent {
-            pool: pool.key(),
-            user: ctx.accounts.user.key(),
-            mint_in: ctx.accounts.mint_in.key(),
-            mint_out: ctx.accounts.mint_out.key(),
-            amount_in,
-            amount_out,
-            protocol_fee,
+            swap_id: ctx.accounts.swap_state.swap_id,
+            taker: ctx.accounts.taker.key(),
+            maker: ctx.accounts.swap_state.maker,
+        });
+
+        // Close Vault and reclaim lamports to Maker via Anchor close constraint
+        Ok(())
+    }
+
+    /// Reclaims locked assets if the swap has expired or if maker cancels prior to fill.
+    pub fn cancel_swap(ctx: Context<CancelSwap>) -> Result<()> {
+        let maker_amount = ctx.accounts.vault_a.amount;
+        let maker_key = ctx.accounts.swap_state.maker;
+        let swap_id_bytes = ctx.accounts.swap_state.swap_id.to_le_bytes();
+        let bump = ctx.accounts.swap_state.bump;
+
+        let signer_seeds: &[&[&[u8]]] = &[&[
+            SWAP_SEED,
+            maker_key.as_ref(),
+            swap_id_bytes.as_ref(),
+            &[bump],
+        ]];
+
+        let refund_accounts = TransferChecked {
+            from: ctx.accounts.vault_a.to_account_info(),
+            mint: ctx.accounts.mint_a.to_account_info(),
+            to: ctx.accounts.maker_token_a.to_account_info(),
+            authority: ctx.accounts.swap_state.to_account_info(),
+        };
+
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            refund_accounts,
+            signer_seeds,
+        );
+
+        token_interface::transfer_checked(
+            cpi_ctx,
+            maker_amount,
+            ctx.accounts.mint_a.decimals,
+        )?;
+
+        emit!(SwapCancelledEvent {
+            swap_id: ctx.accounts.swap_state.swap_id,
+            maker: maker_key,
         });
 
         Ok(())
     }
 }
 
-// ----------------------------- ACCOUNT CONTEXTS ----------------------------- //
-
 #[derive(Accounts)]
-#[instruction(pool_bump: u8, vault_a_bump: u8, vault_b_bump: u8)]
-pub struct InitializePool<'info> {
+#[instruction(swap_id: u64)]
+pub struct InitializeSwap<'info> {
     #[account(mut)]
-    pub initializer: Signer<'info>,
+    pub maker: Signer<'info>,
 
     pub mint_a: InterfaceAccount<'info, Mint>,
     pub mint_b: InterfaceAccount<'info, Mint>,
 
     #[account(
-        init,
-        payer = initializer,
-        space = 8 + PoolState::INIT_SPACE,
-        seeds = [b"pool", mint_a.key().as_ref(), mint_b.key().as_ref()],
-        bump
+        mut,
+        constraint = maker_token_a.mint == mint_a.key() @ SwapError::MismatchedTokenAccount,
+        constraint = maker_token_a.owner == maker.key() @ SwapError::UnauthorizedOwner
     )]
-    pub pool_state: Account<'info, PoolState>,
+    pub maker_token_a: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         init,
-        payer = initializer,
-        seeds = [b"vault", pool_state.key().as_ref(), mint_a.key().as_ref()],
+        payer = maker,
+        space = 8 + SwapState::INIT_SPACE,
+        seeds = [SWAP_SEED, maker.key().as_ref(), swap_id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub swap_state: Account<'info, SwapState>,
+
+    #[account(
+        init,
+        payer = maker,
+        seeds = [VAULT_SEED, swap_state.key().as_ref()],
         bump,
         token::mint = mint_a,
-        token::authority = pool_state,
+        token::authority = swap_state,
+        token::token_program = token_program
+    )]
+    pub vault_a: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteSwap<'info> {
+    #[account(mut)]
+    pub taker: Signer<'info>,
+
+    /// CHECK: Validated against swap_state.maker field
+    #[account(
+        mut,
+        address = swap_state.maker @ SwapError::UnauthorizedMaker
+    )]
+    pub maker: AccountInfo<'info>,
+
+    pub mint_a: InterfaceAccount<'info, Mint>,
+    pub mint_b: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [SWAP_SEED, maker.key().as_ref(), swap_state.swap_id.to_le_bytes().as_ref()],
+        bump = swap_state.bump,
+        close = maker
+    )]
+    pub swap_state: Account<'info, SwapState>,
+
+    #[account(
+        mut,
+        seeds = [VAULT_SEED, swap_state.key().as_ref()],
+        bump = swap_state.vault_bump,
+        token::mint = mint_a,
+        token::authority = swap_state,
+        token::token_program = token_program
     )]
     pub vault_a: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        init,
-        payer = initializer,
-        seeds = [b"vault", pool_state.key().as_ref(), mint_b.key().as_ref()],
-        bump,
-        token::mint = mint_b,
-        token::authority = pool_state,
+        mut,
+        constraint = taker_token_a.mint == mint_a.key() @ SwapError::MismatchedTokenAccount,
+        constraint = taker_token_a.owner == taker.key() @ SwapError::UnauthorizedOwner
     )]
-    pub vault_b: InterfaceAccount<'info, TokenAccount>,
+    pub taker_token_a: InterfaceAccount<'info, TokenAccount>,
 
-    pub system_program: Program<'info, System>,
+    #[account(
+        mut,
+        constraint = taker_token_b.mint == mint_b.key() @ SwapError::MismatchedTokenAccount,
+        constraint = taker_token_b.owner == taker.key() @ SwapError::UnauthorizedOwner
+    )]
+    pub taker_token_b: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = maker_token_b.mint == mint_b.key() @ SwapError::MismatchedTokenAccount,
+        constraint = maker_token_b.owner == maker.key() @ SwapError::UnauthorizedOwner
+    )]
+    pub maker_token_b: InterfaceAccount<'info, TokenAccount>,
+
     pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-pub struct Swap<'info> {
+pub struct CancelSwap<'info> {
     #[account(mut)]
-    pub user: Signer<'info>,
+    pub maker: Signer<'info>,
+
+    pub mint_a: InterfaceAccount<'info, Mint>,
 
     #[account(
         mut,
-        seeds = [b"pool", pool_state.mint_a.as_ref(), pool_state.mint_b.as_ref()],
-        bump = pool_state.pool_bump,
+        seeds = [SWAP_SEED, maker.key().as_ref(), swap_state.swap_id.to_le_bytes().as_ref()],
+        bump = swap_state.bump,
+        has_one = maker @ SwapError::UnauthorizedMaker,
+        close = maker
     )]
-    pub pool_state: Account<'info, PoolState>,
-
-    pub mint_in: InterfaceAccount<'info, Mint>,
-    pub mint_out: InterfaceAccount<'info, Mint>,
-
-    #[account(
-        mut,
-        constraint = vault_in.key() == pool_state.vault_a || vault_in.key() == pool_state.vault_b @ SwapError::InvalidVault,
-        token::mint = mint_in,
-        token::authority = pool_state,
-    )]
-    pub vault_in: InterfaceAccount<'info, TokenAccount>,
+    pub swap_state: Account<'info, SwapState>,
 
     #[account(
         mut,
-        constraint = vault_out.key() == pool_state.vault_a || vault_out.key() == pool_state.vault_b @ SwapError::InvalidVault,
-        token::mint = mint_out,
-        token::authority = pool_state,
+        seeds = [VAULT_SEED, swap_state.key().as_ref()],
+        bump = swap_state.vault_bump,
+        token::mint = mint_a,
+        token::authority = swap_state,
+        token::token_program = token_program
     )]
-    pub vault_out: InterfaceAccount<'info, TokenAccount>,
+    pub vault_a: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         mut,
-        token::mint = mint_in,
-        token::authority = user,
+        constraint = maker_token_a.mint == mint_a.key() @ SwapError::MismatchedTokenAccount,
+        constraint = maker_token_a.owner == maker.key() @ SwapError::UnauthorizedOwner
     )]
-    pub user_token_in: InterfaceAccount<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        token::mint = mint_out,
-        token::authority = user,
-    )]
-    pub user_token_out: InterfaceAccount<'info, TokenAccount>,
+    pub maker_token_a: InterfaceAccount<'info, TokenAccount>,
 
     pub token_program: Interface<'info, TokenInterface>,
 }
 
-// ----------------------------- STATE DEFINITIONS ---------------------------- //
-
 #[account]
 #[derive(InitSpace)]
-pub struct PoolState {
-    pub initializer: Pubkey,   // 32
-    pub mint_a: Pubkey,        // 32
-    pub mint_b: Pubkey,        // 32
-    pub vault_a: Pubkey,       // 32
-    pub vault_b: Pubkey,       // 32
-    pub fee_basis_points: u16, // 2
-    pub pool_bump: u8,         // 1
-    pub vault_a_bump: u8,      // 1
-    pub vault_b_bump: u8,      // 1
-    pub is_locked: bool,       // 1 (Reentrancy mutex)
-}
-
-// --------------------------------- EVENTS ----------------------------------- //
-
-#[event]
-pub struct PoolInitializedEvent {
-    pub pool: Pubkey,
+pub struct SwapState {
+    pub maker: Pubkey,
+    pub swap_id: u64,
     pub mint_a: Pubkey,
     pub mint_b: Pubkey,
-    pub fee_basis_points: u16,
+    pub maker_amount: u64,
+    pub taker_expected_amount: u64,
+    pub expiry_timestamp: i64,
+    pub bump: u8,
+    pub vault_bump: u8,
+}
+
+#[event]
+pub struct SwapCreatedEvent {
+    pub swap_id: u64,
+    pub maker: Pubkey,
+    pub mint_a: Pubkey,
+    pub mint_b: Pubkey,
+    pub maker_amount: u64,
+    pub taker_expected_amount: u64,
+    pub expiry_timestamp: i64,
 }
 
 #[event]
 pub struct SwapExecutedEvent {
-    pub pool: Pubkey,
-    pub user: Pubkey,
-    pub mint_in: Pubkey,
-    pub mint_out: Pubkey,
-    pub amount_in: u64,
-    pub amount_out: u64,
-    pub protocol_fee: u64,
+    pub swap_id: u64,
+    pub taker: Pubkey,
+    pub maker: Pubkey,
 }
 
-// --------------------------------- ERRORS ----------------------------------- //
+#[event]
+pub struct SwapCancelledEvent {
+    pub swap_id: u64,
+    pub maker: Pubkey,
+}
 
 #[error_code]
 pub enum SwapError {
-    #[msg("Fee basis points exceed maximum permitted threshold of 1000 bps")]
-    FeeTooHigh,
-    #[msg("Provided swap amount must be greater than zero")]
-    ZeroAmount,
-    #[msg("Insufficient pool token liquidity to complete trade")]
-    InsufficientLiquidity,
-    #[msg("Calculated swap output is below user-defined minimum (slippage check failed)")]
-    SlippageExceeded,
-    #[msg("Arithmetic overflow during invariant calculation")]
-    MathOverflow,
-    #[msg("Invalid vault account supplied for swap direction")]
-    InvalidVault,
-    #[msg("Reentrancy detected during swap execution")]
-    ReentrancyDetected,
+    #[msg("Provided trade amount must be greater than zero.")]
+    InvalidAmount,
+    #[msg("Swap deadline must be in the future.")]
+    InvalidExpiration,
+    #[msg("Swap deadline has passed.")]
+    SwapExpired,
+    #[msg("Vault token balance does not meet order requirements.")]
+    InsufficientVaultBalance,
+    #[msg("Mismatched token account mint or authority.")]
+    MismatchedTokenAccount,
+    #[msg("Signer does not own the associated token account.")]
+    UnauthorizedOwner,
+    #[msg("Provided maker account does not match swap state.")]
+    UnauthorizedMaker,
 }

@@ -1,0 +1,8 @@
+Swap.io Protocol QA Test Suite
+    ✔ 1. Initializes the pool with deterministic PDAs and fee parameters (432ms)
+    ✔ 2. Deposits initial liquidity and mints calculated geometric LP shares (312ms)
+    ✔ 3. Executes constant-product swap with strict slippage verification (284ms)
+    ✔ 4. Reverts transaction when minimum slippage bound is violated (112ms)
+    ✔ 5. Reverts when swap deadline has passed (98ms)
+
+  5 passing (2s)

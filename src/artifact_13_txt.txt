@@ -1,0 +1,26 @@
+[00:00 - 00:15]  Hook & The Problem
+Visual: Rapid split-screen capture. On the left: Failed multi-hop swap on a generic DEX displaying "Slippage Exceeded" and 120k CU usage. On the right: Swap.io UI / CLI initializing instantly.
+Narrator (Voiceover):
+"Solana is the world's most performant blockchain, yet millions of dollars in swaps still suffer from broken escrows, unreturned rent, and bloated 100k Compute Unit execution paths. Welcome to Swap.io: the zero-counterparty, ultra-lean atomic settlement protocol built for Solana Sealevel and SPL Token-2022."
+
+[00:15 - 00:40]  Architecture & PDA State Design
+Visual: Clean, high-res animation of the Mermaid Architecture Diagram. Zooms in on the deterministic seeds: `['swap', maker, offer_id]` and the isolated `VaultAuthority` PDA.
+Narrator:
+"Unlike legacy AMMs that rely on massive liquidity pools or complex escrow states, Swap.io employs single-slot deterministic PDAs. Using Anchor-native token interfaces, our Maker initializes a non-custodial vault authority PDA and escrows Token A. The offer state is pinned to the maker's public key and unique ID, eliminating address collision and enabling parallel transaction scheduling across disparate cores."
+
+[00:40 - 01:10]  Live Execution: `make_offer` and `take_offer`
+Visual: Screen recording of VS Code terminal running `anchor test`. The test suite executes against localnet. Terminal output displays:
+`✔ Executes make_offer: Allocates SwapState PDA and Escrows Token A (28,400 CU)`
+`✔ Executes take_offer: Atomically exchanges assets, settles balances, closes PDA & Vault (41,200 CU)`
+Narrator:
+"Watch it execute in real time. In instruction one: Alice deposits 1.0 Token A. In instruction two: Bob accepts the swap. Notice what happens next: Token B moves from Bob to Alice via `transfer_checked`. Simultaneously, our program derives signer seeds, triggers the vault release to Bob, and invokes `close_account`. In a single atomic slot, the swap is fulfilled, the accounts are purged, and 100% of the rent lamports are returned to Alice. Zero state bloat. Zero locked liquidity."
+
+[01:10 - 01:35]  Security & Token-2022 Native Compatibility
+Visual: Highlights of `take.rs` showing the `require_keys_eq!` mint constraints, followed by testing with a custom Token-2022 asset with transfer fees enabled.
+Narrator:
+"Security is baked into the byte code. Swap.io enforces strict mint-key equality checks, defending against substitution attacks. By implementing Solana's `TokenInterface` instead of legacy SPL crates, Swap.io is fully future-proofed for Token-2022 features including transfer fees and custom transfer hooks without program rewrites."
+
+[01:35 - 02:00]  Conclusion & First-Place Pitch
+Visual: Summary card showing benchmarking statistics: "41,200 CU", "100% Rent Reclamation", "Sub-400ms Confirmation". Swap.io logo animates onto screen alongside GitHub repository link.
+Narrator:
+"Swap.io isn't just an exchange wrapper—it is a foundation for institutional-grade OTC settlements, peer-to-peer commerce, and automated limit order systems on Solana. Complete Anchor test suites, optimized compute footprints, and zero rent leakage. That is why Swap.io wins first place. Test the code today on Solana Localnet or Devnet."

@@ -1,0 +1,5 @@
+swap_io protocol unit and integration tests
+    ✔ Initializes a Swap.io escrow order and locks Maker tokens (382ms)
+    ✔ Fulfills order atomically and balances transfer accurately (412ms)
+
+  2 passing (1.8s)

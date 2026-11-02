@@ -1,0 +1,1 @@
+#[account(mut, has_one = token_a_vault, has_one = token_b_vault)]

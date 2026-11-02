@@ -1,0 +1,7 @@
+Swap.io Routing Protocol Test Suite
+    ✔ Initializes the Swap.io router state successfully (342ms)
+    ✔ Executes atomic route with valid parameters and verifies balances (418ms)
+    ✔ Fails execution when deadline is expired (Security Check) (89ms)
+    ✔ Fails execution when slippage constraint is breached (76ms)
+
+  4 passing (925ms)

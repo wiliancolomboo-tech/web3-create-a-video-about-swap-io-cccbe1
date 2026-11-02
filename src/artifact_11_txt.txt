@@ -1,0 +1,9 @@
+Swap.io - Technical AMM Test Harness
+    ✔ QA-01: Successfully Initializes Pool with Lexical Ordering (412ms)
+    ✔ QA-02: Rejects Inverted Lexical Mint Ordering (82ms)
+    ✔ QA-03: Performs Initial Seed Liquidity Deposit (465ms)
+    ✔ QA-04: Executes Valid Constant-Product Swap (Token A -> Token B) (391ms)
+    ✔ QA-05: Reverts Atomic Swap Exceeding Max Permissible Slippage (74ms)
+    ✔ QA-06: Withdraws Liquidity Proportionally (428ms)
+
+  6 passing (2s)

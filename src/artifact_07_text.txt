@@ -1,0 +1,6 @@
+Swap.io Protocol Suite
+    ✔ Initializes a deterministic swap escrow on Swap.io (412ms)
+    ✔ Executes atomic counter-settlement (Fill Swap) (489ms)
+    ✔ Rejects swap fulfillment if expired (2053ms)
+
+  3 passing (3.8s)

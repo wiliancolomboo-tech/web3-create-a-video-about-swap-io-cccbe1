@@ -1,0 +1,8 @@
+swap_io integration test matrix
+    ✔ Initializes the canonical Swap.io pool (412ms)
+    ✔ Deposits symmetric liquidity into pool vaults and mints LP tokens (385ms)
+Executed swap: 100000000 In -> 97268390 Out. Tx: 4Xv9K...
+    ✔ Executes deterministic swap (Token A -> Token B) with slippage safety (310ms)
+    ✔ Reverts deterministically when slippage tolerance is breached (122ms)
+
+  4 passing (1.8s)

@@ -1,0 +1,7 @@
+Swap.io Protocol QA Test Matrix
+    ✔ Test 1: Initialize pool state with canonical ordering (482ms)
+    ✔ Test 2: Deposit liquidity into the pool (612ms)
+    ✔ Test 3: Execute atomic swap A -> B with slippage guarantee (423ms)
+    ✔ Test 4: Fail on excessive slippage assertion (312ms)
+
+  4 passing (2s)

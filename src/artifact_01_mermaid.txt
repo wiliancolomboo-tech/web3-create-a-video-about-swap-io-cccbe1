@@ -1,0 +1,58 @@
+flowchart TD
+    subgraph ClientLayer ["Client & Off-Chain Infrastructure"]
+        Maker["Maker / Order Originator"]
+        Taker["Taker / Arbitrageur / Trader"]
+        Relayer["Keeper / Crank Relayer"]
+    end
+
+    subgraph ProgramBoundary ["Swap.io Solana Program (swap_io_core)"]
+        InitIx["Instruction: initialize_swap()"]
+        ExecIx["Instruction: execute_swap()"]
+        CancelIx["Instruction: cancel_swap()"]
+
+        subgraph PDA_State ["Program Derived Accounts (PDAs)"]
+            EscrowState["Escrow State PDA\nSeeds: ['swap', maker, seed]"]
+            VaultA["Vault Authority PDA\nSeeds: ['vault_auth', escrow]"]
+            EscrowVaultTokenA["Escrow Vault Token A (ATA)\nOwner: Vault Authority PDA"]
+        end
+
+        subgraph GuardRails ["Security & Validation Checks"]
+            SignerCheck{"Valid Signer?"}
+            DeadlineCheck{"Clock::get().slot <= deadline_slot?"}
+            InvariantCheck{"Taker Out >= Escrow Expected Min Out?"}
+            AccountCheck{"Token Program ID == (SPL or T22)?"}
+        end
+    end
+
+    subgraph SplLayer ["Solana Token Programs"]
+        TokenLegacy["SPL Token Program"]
+        Token2022["SPL Token-2022 Program"]
+        MakerTokenA["Maker Token A Account"]
+        MakerTokenB["Maker Token B Account"]
+        TakerTokenA["Taker Token A Account"]
+        TakerTokenB["Taker Token B Account"]
+    end
+
+    %% Lifecycle Flows
+    Maker -->|"1. Signs & submits Tx (Deposit A, Expect B)"| InitIx
+    InitIx --> SignerCheck
+    SignerCheck -->|"Pass"| EscrowState
+    InitIx -->|"CPI: TransferChecked (Token A)"| MakerTokenA
+    MakerTokenA -->|"Locks Token A"| EscrowVaultTokenA
+
+    Taker -->|"2. Discovers order & executes"| ExecIx
+    ExecIx --> DeadlineCheck
+    DeadlineCheck -->|"Pass"| InvariantCheck
+    InvariantCheck -->|"Pass"| AccountCheck
+
+    AccountCheck -->|"CPI: TransferChecked (Token B)"| TakerTokenB
+    TakerTokenB -->|"Sends Token B"| MakerTokenB
+
+    AccountCheck -->|"CPI: TransferChecked (Vault Token A)"| EscrowVaultTokenA
+    EscrowVaultTokenA -->|"Settles Token A"| TakerTokenA
+
+    ExecIx -->|"Close Vault & State PDA (Rent Reclaimed)"| Maker
+
+    Relayer -.->|"If deadline expired"| CancelIx
+    CancelIx -->|"Refund Token A"| MakerTokenA
+    CancelIx -->|"Close Account (Rent Refund)"| Maker

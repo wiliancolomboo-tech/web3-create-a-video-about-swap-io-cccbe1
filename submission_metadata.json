@@ -1,0 +1,64 @@
+{
+  "deliverable_id": "superteam_312f26cccbe1",
+  "opportunity_id": "st-a57a791c-200f-466f-9321-e1e0e024a2e8",
+  "platform": "SuperteamEarn",
+  "title": "Create a Video About Swap.io",
+  "url": "https://earn.superteam.fun/listings/bounty/create-a-video-about-swapio",
+  "budget": "500 USDC",
+  "prize_amount": 500.0,
+  "ecosystem": "Solana",
+  "github_url": "https://github.com/wiliancolomboo-tech/web3-create-a-video-about-swap-io-cccbe1",
+  "status": "ready_for_submission",
+  "validation_reports": [
+    {
+      "file": "artifact_01_mermaid.txt",
+      "language": "mermaid",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_02_rust.rs",
+      "language": "rust",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_03_typescript.ts",
+      "language": "typescript",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_04_txt.txt",
+      "language": "txt",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_05_bash.sh",
+      "language": "bash",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_06_bash.sh",
+      "language": "bash",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_07_bash.sh",
+      "language": "bash",
+      "valid": true,
+      "error": null
+    },
+    {
+      "file": "artifact_08_bash.sh",
+      "language": "bash",
+      "valid": true,
+      "error": null
+    }
+  ],
+  "git_initialized": true,
+  "created_at": "2026-09-13 13:55:14"
+}

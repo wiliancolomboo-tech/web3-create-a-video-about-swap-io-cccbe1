@@ -1,51 +1,55 @@
 flowchart TD
     subgraph ClientLayer["Client & Keeper Layer"]
-        User["User / Trader (Signer)"]
-        UI["Swap.io Interface / Aggregator SDK"]
-        User -->|"Signs Transaction"| UI
+        Maker["Maker (User Wallet)"]
+        Taker["Taker / Keeper / Router"]
     end
 
-    subgraph InstructionBoundary["Solana Runtime Boundary"]
-        CU_Limit["Compute Budget Program: SetComputeUnitLimit(45_000)"]
-        CU_Price["Compute Budget Program: SetComputeUnitPrice(Priority Fee)"]
-        SwapIx["Swap.io Instruction: swap(amount_in, min_amount_out)"]
-        UI --> CU_Limit
-        UI --> CU_Price
-        UI --> SwapIx
+    subgraph ProgramBoundary["Swap.io Core Engine (Solana Program ID: swap_io...)"]
+        InitIx["Instruction: initialize_swap(maker_amount, taker_expected)"]
+        ExecIx["Instruction: execute_swap()"]
+        CancelIx["Instruction: cancel_swap()"]
+        
+        subgraph SecurityGuards["Security & Validation Checks"]
+            SignerCheck{"Signer == Authority?"}
+            PDAProof{"Seed: ['swap', maker, id]"}
+            BalanceGuard{"Vault Balance >= Expected?"}
+            ClockGuard{"Clock::get().unix_timestamp <= Expiry"}
+            SlippageGuard{"Deposited >= Minimum Out?"}
+        end
     end
 
-    subgraph SecurityGuards["Security Checks & Validation"]
-        SG1{"Signer Check: user.is_signer"}
-        SG2{"PDA Seeds Verification: pool_state & vaults"}
-        SG3{"Reentrancy / Invariant: x * y >= k"}
-        SG4{"Slippage Check: amount_out >= min_amount_out"}
+    subgraph StateAndVaults["PDA State & Vault Isolation"]
+        SwapState["SwapState PDA\n- maker: Pubkey\n- mint_a: Pubkey\n- mint_b: Pubkey\n- amount_a: u64\n- amount_b: u64\n- bump: u8\n- expiry: i64"]
+        VaultA["Vault PDA (Token Account)\nOwner: SwapState PDA\nHolds: Asset A"]
     end
 
-    SwapIx --> SG1
-    SG1 -->|Valid| SG2
-    SG2 -->|Valid| SG3
-
-    subgraph StateAccounts["On-Chain State Accounts (PDAs)"]
-        PoolPDA["PoolState PDA<br/>seeds=[b'pool', mint_a, mint_b]"]
-        VaultA["Vault A PDA Token Account<br/>seeds=[b'vault', pool, mint_a]"]
-        VaultB["Vault B PDA Token Account<br/>seeds=[b'vault', pool, mint_b]"]
-        ProtocolFeeVault["Protocol Fee Vault PDA<br/>seeds=[b'fee', pool]"]
+    subgraph SPLTokenProgram["SPL Token Engine (Token-2022 / Classic SPL)"]
+        CPI_Deposit["CPI: TransferChecked (Maker ATA -> Vault A)"]
+        CPI_PayTaker["CPI: TransferChecked (Vault A -> Taker ATA)"]
+        CPI_PayMaker["CPI: TransferChecked (Taker ATA -> Maker ATA)"]
+        CPI_Refund["CPI: TransferChecked (Vault A -> Maker ATA)"]
     end
 
-    subgraph ExecutionEngine["Atomic Execution Core"]
-        CalcMath["Math Engine: Constant Product Invariant (x * y = k)<br/>Includes Token-2022 Fee Deduction"]
-        CPI_In["Token Program / Token-2022 CPI<br/>Transfer amount_in from User to Vault A"]
-        CPI_Out["Token Program / Token-2022 CPI<br/>Transfer amount_out from Vault B to User<br/>(Signer: Pool PDA)"]
-        CPI_Fee["Token Program CPI<br/>Transfer protocol_fee to ProtocolFeeVault"]
-    end
+    %% Flow of Initialize
+    Maker -->|1. Sign & Submit tx| InitIx
+    InitIx --> SignerCheck
+    SignerCheck -->|Pass| PDAProof
+    PDAProof -->|Derived & Initialized| SwapState
+    InitIx -->|2. Transfer Collateral| CPI_Deposit
+    CPI_Deposit --> VaultA
 
-    SG3 --> CalcMath
-    CalcMath --> SG4
-    SG4 -->|Invariant Holds| CPI_In
-    CPI_In --> CPI_Out
-    CPI_Out --> CPI_Fee
+    %% Flow of Execute
+    Taker -->|3. Route Counter-Asset & Fulfill| ExecIx
+    ExecIx --> ClockGuard
+    ClockGuard -->|Valid| BalanceGuard
+    BalanceGuard -->|Valid| SlippageGuard
+    SlippageGuard -->|Settlement Path| CPI_PayMaker
+    CPI_PayMaker -->|Credit B| Maker
+    ExecIx -->|Sign with PDA seeds| CPI_PayTaker
+    CPI_PayTaker -->|Credit A| Taker
 
-    CPI_In -.->|Mutates State| VaultA
-    CPI_Out -.->|Mutates State| VaultB
-    CPI_Fee -.->|Mutates State| ProtocolFeeVault
-    CPI_Out -.->|Emits Event| SwapEvent["SwapEvent: { user, in, out, fee }"]
+    %% Flow of Cancel
+    Maker -->|Emergency Cancel| CancelIx
+    CancelIx --> SignerCheck
+    CancelIx --> CPI_Refund
+    CPI_Refund --> Maker

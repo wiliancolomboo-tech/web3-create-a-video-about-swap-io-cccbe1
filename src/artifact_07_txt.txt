@@ -1,0 +1,7 @@
+swap-io protocol test matrix
+    ✔ 1. Initializes canonical pool with sorted mints (412ms)
+    ✔ 2. Deposits initial liquidity and receives proportional LP tokens (582ms)
+    ✔ 3. Executes constant-product swap under expected slippage tolerance (389ms)
+    ✔ 4. Rejects swap if slippage barrier breached (211ms)
+
+  4 passing (2s)

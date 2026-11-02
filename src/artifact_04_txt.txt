@@ -1,0 +1,14 @@
++-----------------------------+------------------------------------+---------------------------------------+
+| Threat Vector               | Vulnerability Consequence          | Swap.io Defensive Mechanism           |
++-----------------------------+------------------------------------+---------------------------------------+
+| Reentrancy via CPI          | Drain escrow token reserves        | Solana Sealevel runtime lockouts +    |
+|                             |                                    | CEI (Checks-Effects-Interactions)     |
+| Slippage / MEV Sandwich     | Taker drains with unfair pricing   | Strict `taker_expected_amount_out`   |
+|                             |                                    | matching to exact lamports            |
+| Stale Order Poisoning       | Execution at unfavorable conditions| Dynamic `Clock::get()?.slot` checks   |
+|                             |                                    | via hardware sysvar                   |
+| Fake Token Substitution     | Worthless mint swap                | Program stores & checks Token Mints   |
+|                             |                                    | via `mint = token_mint` constraints   |
+| Unauthorized Rent Drain     | Keeper steals escrow rent exempt   | Explicit `close = maker` ensures rent |
+|                             | SOL upon account termination       | returned to original depositor        |
++-----------------------------+------------------------------------+---------------------------------------+

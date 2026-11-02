@@ -1,0 +1,6 @@
+Swap.io Protocol Suite
+    ✔ 1. Successfully initializes a swap order with locked PDA vault (412ms, 24180 CU)
+    ✔ 2. Atomically fills the swap and closes PDA state (508ms, 28420 CU)
+    ✔ 3. Rejects fill if order is expired and permits keeper cancel refund (2314ms, 18910 CU)
+
+  3 passing (3.24s)

@@ -1,0 +1,7 @@
+swap_io integration test matrix
+    ✔ Test 1: Initializes Swap & Escrows Mint A (Happy Path) (412ms)
+    ✔ Test 2: Executes Atomic Swap Successfully (Double Sided CPI Settlement) (495ms)
+    ✔ Test 3: Rejects Execution when Swap has Expired (3210ms)
+    ✔ Test 4: Adversary Cannot Cancel Unexpired Swap (389ms)
+
+  4 passing (5s)

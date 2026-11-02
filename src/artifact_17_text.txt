@@ -1,0 +1,7 @@
+swap_io integration test suite
+    ✔ Initializes the Swap.io Liquidity Pool (412ms)
+    ✔ Funds the Pool Vaults for Testing (388ms)
+    ✔ Executes an Atomic Swap: Token A -> Token B (310ms)
+    ✔ Enforces Slippage Guard Failures (189ms)
+
+  4 passing (1.30s)
